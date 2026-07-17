@@ -243,6 +243,9 @@ local function readVarint(bytes: buffer, position: number): (number, number)
 			error("snack.bite: malformed snack (varint too long)", 0)
 		end
 	end
+	if result > MAX_SAFE_INTEGER then
+		error("snack.bite: malformed snack (varint too large)", 0)
+	end
 	return result, position
 end
 
