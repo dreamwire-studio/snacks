@@ -63,7 +63,7 @@ jobs:
         uses: ./.github/actions/setup-toolchain
 
       - name: Log in to Wally
-        run: wally login --token "${{ secrets.WALLY_AUTH_TOKEN }}"
+        run: wally login --token "${{ secrets.WALLY_AUTH_TOKEN_SNACKS }}"
 
       - name: Publish
         run: wally publish
