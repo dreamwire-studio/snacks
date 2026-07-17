@@ -468,6 +468,14 @@ test("overlong varint", function()
 	end, "varint too long")
 end)
 
+test("varint values beyond 2^53 are rejected", function()
+	-- Eight bytes encoding 2^56 - 1: structurally valid LEB128, but the value
+	-- exceeds what a double can hold precisely, so bite must refuse it.
+	expectError(function()
+		return biteBytes(3, 255, 255, 255, 255, 255, 255, 255, 127)
+	end, "varint too large")
+end)
+
 test("truncated floats", function()
 	expectError(function()
 		return biteBytes(5, 0, 0, 0)
