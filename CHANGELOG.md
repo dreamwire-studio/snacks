@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-18
+
+### Added
+
+- **Packs**: combine many snacks into one buffer with zero framing overhead.
+  - `snack.pack(...)` concatenates snacks and/or packs — one function covers
+    building, appending, and merging; `snack.pack()` is the empty pack.
+  - `snack.unpack(p)` decodes every entry, returning the values plus an entry
+    count (entries can be `nil`, so the count is authoritative).
+  - `snack.nibble(p, index)` decodes a single entry, structurally skipping the
+    others without materializing them.
+  - `snack.count(p)` counts entries without decoding; `pcall(snack.count, p)`
+    doubles as pack validation.
+  - Exported `snack.Pack` phantom type, deliberately not interchangeable with
+    `Snack<T>` so multi-entry packs cannot be passed to `bite` by accident.
+
+### Changed
+
+- Malformed-input errors are now prefixed `snack:` instead of `snack.bite:`,
+  since the decoder is shared by `bite`, `unpack`, `nibble`, and `count`.
+
 ## [0.1.0] - 2026-07-17
 
 ### Added
