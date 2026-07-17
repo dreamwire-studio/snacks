@@ -313,7 +313,7 @@ CI ([ci.yml](.github/workflows/ci.yml)) runs the suite on Linux, Windows, and ma
 every push and pull request, and fails if line coverage of `src/init.luau` drops below
 100%. Publishing a GitHub release tagged `vX.Y.Z` (matching the `wally.toml` version)
 re-verifies everything and publishes to Wally via
-[release.yml](.github/workflows/release.yml) — set a `WALLY_AUTH_TOKEN` repository secret
+[release.yml](.github/workflows/release.yml) — set a `WALLY_AUTH_TOKEN_SNACKS` repository secret
 for it.
 
 The module is a single file ([src/init.luau](src/init.luau)) with no requires, compiled
