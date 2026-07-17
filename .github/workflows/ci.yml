@@ -25,9 +25,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        uses: paradoxum-games/setup-rokit@v1
-        with:
-          cache: true
+        uses: ./.github/actions/setup-toolchain
 
       - name: Run test suite (lute)
         run: lute tests/run.luau
@@ -42,9 +40,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        uses: paradoxum-games/setup-rokit@v1
-        with:
-          cache: true
+        uses: ./.github/actions/setup-toolchain
 
       - name: Collect line coverage
         run: luau --coverage tests/run.luau
@@ -59,9 +55,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        uses: paradoxum-games/setup-rokit@v1
-        with:
-          cache: true
+        uses: ./.github/actions/setup-toolchain
 
       - name: Current solver (luau-lsp)
         run: luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau
@@ -76,9 +70,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install toolchain
-        uses: paradoxum-games/setup-rokit@v1
-        with:
-          cache: true
+        uses: ./.github/actions/setup-toolchain
 
       - name: StyLua
         run: stylua --check src tests

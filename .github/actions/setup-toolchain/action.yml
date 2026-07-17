@@ -1,0 +1,32 @@
+# Installs rokit from crates.io with the Rust toolchain preinstalled on
+# GitHub-hosted runners, then installs the tools pinned in rokit.toml.
+#
+# Everything is cached: after the first run per OS, `cargo install` sees the
+# cached binary and skips the compile, and the rokit tool storage is restored
+# instead of re-downloaded.
+
+name: Setup toolchain
+description: Install rokit from crates.io and the pinned tools from rokit.toml
+
+runs:
+  using: composite
+  steps:
+    - name: Cache rokit and tool storage
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/rokit*
+          ~/.rokit
+        key: rokit-1.2.0-${{ runner.os }}-${{ hashFiles('rokit.toml') }}
+        restore-keys: |
+          rokit-1.2.0-${{ runner.os }}-
+
+    - name: Install rokit from crates.io
+      shell: bash
+      run: cargo install rokit --version 1.2.0 --locked
+
+    - name: Install pinned tools and add them to PATH
+      shell: bash
+      run: |
+        rokit install --no-trust-check
+        echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
