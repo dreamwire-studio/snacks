@@ -1,4 +1,4 @@
-# 🍪 snack
+# snack
 
 [![CI](https://github.com/dreamwire-studio/snacks/actions/workflows/ci.yml/badge.svg)](https://github.com/dreamwire-studio/snacks/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
