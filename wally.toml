@@ -1,0 +1,9 @@
+[package]
+name = "dreamwire-studio/snack"
+description = "Pack any Luau value into the smallest practical pile of bytes, and bite it back out."
+version = "0.1.0"
+license = "GPL-3.0-only"
+authors = ["Reece Harris <me@reeceharris.net>"]
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+exclude = ["tests", "tests/**", ".github/**", "coverage.out", "rokit.toml", "stylua.toml", ".luaurc", ".gitignore", ".gitattributes"]

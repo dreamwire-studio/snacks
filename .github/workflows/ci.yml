@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: paradoxum-games/setup-rokit@v1
+        with:
+          cache: true
+
+      - name: Run test suite (lute)
+        run: lute tests/run.luau
+
+      - name: Run test suite (luau reference CLI)
+        run: luau tests/run.luau
+
+  coverage:
+    name: Coverage gate (100%)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: paradoxum-games/setup-rokit@v1
+        with:
+          cache: true
+
+      - name: Collect line coverage
+        run: luau --coverage tests/run.luau
+
+      - name: Enforce 100% line coverage of src/init.luau
+        run: lute tests/coverage.luau
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: paradoxum-games/setup-rokit@v1
+        with:
+          cache: true
+
+      - name: Current solver (luau-lsp)
+        run: luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau
+
+      - name: New solver (lute check)
+        run: lute check src/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau
+
+  style:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: paradoxum-games/setup-rokit@v1
+        with:
+          cache: true
+
+      - name: StyLua
+        run: stylua --check src tests
