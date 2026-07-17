@@ -322,4 +322,4 @@ in Roblox.
 
 ## License
 
-[GPL-3.0](LICENSE) © Reece Harris
+[GPL-3.0](LICENSE) © DreamWire Studio
