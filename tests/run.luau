@@ -592,7 +592,10 @@ local function randomValue(depth: number): any
 	elseif roll == 2 then
 		return math.random() < 0.5
 	elseif roll == 3 then
-		return math.random(-2 ^ 31, 2 ^ 31)
+		-- Two bounded rolls multiplied: covers integers across the full ±2^52
+		-- varint range while keeping each interval well under the 2^31 limit
+		-- math.random enforces on some platforms (macOS arm64 rejects 2^32+1).
+		return math.random(-2 ^ 26, 2 ^ 26) * math.random(0, 2 ^ 26)
 	elseif roll == 4 then
 		return (math.random() - 0.5) * 2 ^ math.random(-20, 60)
 	elseif roll == 5 then
