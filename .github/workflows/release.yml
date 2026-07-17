@@ -1,0 +1,69 @@
+# Publishes the package to the Wally registry.
+#
+# Trigger: publishing a GitHub release whose tag matches the version in
+# wally.toml (e.g. tag v0.1.0 for version = "0.1.0"), or manually via
+# workflow_dispatch.
+#
+# Requires a repository secret named WALLY_AUTH_TOKEN containing a Wally
+# registry token (create one with `wally login` locally, or from
+# https://wally.run).
+
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify before publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: Check release tag matches wally.toml version
+        if: github.event_name == 'release'
+        run: |
+          version=$(grep -m1 '^version' wally.toml | sed 's/.*"\(.*\)".*/\1/')
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "wally.toml version ($version) does not match release tag ($GITHUB_REF_NAME)"
+            exit 1
+          fi
+
+      - name: Run test suite
+        run: lute tests/run.luau
+
+      - name: Collect line coverage
+        run: luau --coverage tests/run.luau
+
+      - name: Enforce 100% line coverage
+        run: lute tests/coverage.luau
+
+      - name: Typecheck
+        run: |
+          luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau
+          lute check src/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau
+
+  publish:
+    name: Publish to Wally
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: Log in to Wally
+        run: wally login --token "${{ secrets.WALLY_AUTH_TOKEN_SNACKS }}"
+
+      - name: Publish
+        run: wally publish

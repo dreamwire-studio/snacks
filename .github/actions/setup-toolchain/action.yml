@@ -1,0 +1,53 @@
+# Installs rokit from crates.io with the Rust toolchain preinstalled on
+# GitHub-hosted runners, then installs the tools pinned in rokit.toml.
+#
+# Everything is cached per OS: on a cache hit the restored rokit binary
+# answers the version probe and the cargo build is skipped entirely, and the
+# rokit tool storage is restored instead of re-downloaded.
+
+name: Setup toolchain
+description: Install rokit from crates.io and the pinned tools from rokit.toml
+
+inputs:
+  rokit-version:
+    description: rokit version to install from crates.io
+    required: false
+    default: "1.2.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache rokit and tool storage
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/rokit*
+          ~/.rokit
+        key: rokit-${{ inputs.rokit-version }}-${{ runner.os }}-${{ hashFiles('rokit.toml') }}
+        restore-keys: |
+          rokit-${{ inputs.rokit-version }}-${{ runner.os }}-
+
+    - name: Install rokit from crates.io (skipped when cached)
+      shell: bash
+      env:
+        ROKIT_VERSION: ${{ inputs.rokit-version }}
+      # A cache hit restores the binary but not cargo's install metadata, so
+      # `cargo install` alone would refuse with "binary already exists". Probe
+      # the binary instead and only build when it is absent or the wrong
+      # version (then --force overwrites whatever stale binary is there).
+      run: |
+        if rokit --version 2>/dev/null | grep -qF "$ROKIT_VERSION"; then
+          echo "rokit $ROKIT_VERSION already installed, skipping build"
+        else
+          cargo install rokit --version "$ROKIT_VERSION" --locked --force
+        fi
+
+    - name: Install pinned tools and add them to PATH
+      shell: bash
+      # USERPROFILE keeps the Windows-style path (C:\Users\...) that later
+      # PowerShell steps need; bash's $HOME would leak a /c/Users/... form
+      # into GITHUB_PATH that only git-bash understands. Unix runners have
+      # no USERPROFILE and fall back to $HOME.
+      run: |
+        rokit install --no-trust-check
+        echo "${USERPROFILE:-$HOME}/.rokit/bin" >> "$GITHUB_PATH"
