@@ -35,7 +35,7 @@ Add snack to your `wally.toml` and install:
 
 ```toml
 [dependencies]
-snack = "dreamwire-studio/snack@0.1.0"
+snack = "dreamwire-studio/snack@0.2.0"
 ```
 
 ```sh
@@ -105,7 +105,7 @@ print(bite(a))
 ```
 
 `bite` fully validates its input: a truncated, corrupt, or forged buffer raises a
-descriptive `snack.bite: malformed snack (...)` error rather than a raw buffer access
+descriptive `snack: malformed snack (...)` error rather than a raw buffer access
 error, and forged length fields cannot cause large allocations or long loops. Wrap the
 call in `pcall` (or pre-check with `snack.is`) when the bytes come from an untrusted peer.
 
@@ -134,6 +134,46 @@ local restored = snack.wrap(stored) :: snack.String
 ### `snack.is(value: any) → boolean`
 
 `true` only if `value` is a buffer containing exactly one complete, well-formed snack.
+(A multi-entry pack is deliberately *not* a valid snack — validate packs with
+`pcall(snack.count, p)` instead.)
+
+### `snack.pack(...: Snack | Pack) → Pack`
+
+Concatenates any number of snacks and/or packs into one buffer — a *pack*. Because the
+wire format is self-delimiting, entries are laid end to end with **zero framing bytes**:
+a pack's size is exactly the sum of its pieces, and nothing is re-encoded (it is pure
+`buffer.copy`). That makes `pack` three operations in one:
+
+```lua
+local p = snack.pack(a, b)        -- build
+local p2 = snack.pack(p, c)       -- append
+local all = snack.pack(p, p2)     -- merge
+local empty = snack.pack()        -- the empty pack (0 bytes)
+```
+
+### `snack.unpack(p: Pack) → ({any}, number)`
+
+Decodes every entry, returning the values as an array **plus the entry count**. Use the
+count rather than `#values`, because entries can legitimately be `nil`:
+
+```lua
+local values, n = snack.unpack(p)
+for index = 1, n do
+	handle(values[index])
+end
+```
+
+### `snack.nibble(p: Pack, index: number) → any`
+
+Decodes *only* the entry at `index` (1-based). Other entries are skipped structurally —
+their boundaries are walked, but no tables, strings, or buffers are materialized — so
+nibbling one entry out of a large pack is much cheaper than unpacking everything. Errors
+if `index` is past the last entry.
+
+### `snack.count(p: Pack) → number`
+
+Number of entries, found by walking boundaries without decoding. Errors on malformed
+bytes, so `pcall(snack.count, p)` doubles as pack validation.
 
 ### Exported types
 
@@ -148,6 +188,7 @@ local restored = snack.wrap(stored) :: snack.String
 | `snack.Table<T = any>` | `Snack<T>` — optionally precise: `snack.Table<{ number }>` |
 | `snack.Vector` | `Snack<vector>` |
 | `snack.Buffer` | `Snack<buffer>` |
+| `snack.Pack` | Zero or more snacks in one buffer — deliberately not assignable to/from `Snack<T>`, so a multi-entry pack can't be passed to `bite` by accident |
 
 > **Why `snack.String` and not `snack.string`?** Luau reserves the primitive type names:
 > `export type string = ...` fails to compile with `TypeError: Redefinition of type
@@ -211,6 +252,10 @@ Tables encode their array part (`1..rawlen(t)`, holes included as NIL) followed 
 remaining key/value pairs. Keys may be any supported type. Vectors store the three f32
 components natively backing them (Roblox `Vector3` *is* the native f32 vector type), so
 vector round trips are lossless too.
+
+A *pack* is simply zero or more encoded values laid end to end — the self-delimiting
+format needs no count header or separators, so packing adds no bytes at all and merging
+two packs is plain concatenation.
 
 The format is stable within a major version: bytes packed by any `0.x` release will be
 bitten correctly by any later `0.x` release.
@@ -279,6 +324,42 @@ remote.OnServerEvent:Connect(function(player, payload)
 end)
 ```
 
+### Batching messages with packs
+
+Accumulate small messages during a frame and flush them as one payload — one remote
+call, one buffer, no per-message overhead:
+
+```lua
+-- Sender: queue snacks cheaply, combine on flush
+local queue = {}
+
+local function send(message)
+	table.insert(queue, snack(message))
+end
+
+RunService.Heartbeat:Connect(function()
+	if #queue > 0 then
+		remote:FireServer(snack.raw(snack.pack(table.unpack(queue)) :: any))
+		table.clear(queue)
+	end
+end)
+
+-- Receiver: validate, then take the pack apart
+remote.OnServerEvent:Connect(function(player, payload)
+	if typeof(payload) ~= "buffer" then
+		return
+	end
+	local bundle = payload :: any
+	if not pcall(snack.count, bundle) then
+		return -- malformed or forged
+	end
+	local messages, n = snack.unpack(bundle)
+	for index = 1, n do
+		handleMessage(player, messages[index])
+	end
+end)
+```
+
 ### Keeping many values packed in memory
 
 A snack is just bytes, so long-lived state you rarely touch (undo history, chunk data,
@@ -302,7 +383,7 @@ rokit install
 
 | Task | Command |
 | --- | --- |
-| Run the test suite (580 tests, incl. 512 seeded fuzz round trips) | `lute tests/run.luau` |
+| Run the test suite (660 tests, incl. 576 seeded fuzz round trips) | `lute tests/run.luau` |
 | Same suite on the reference CLI | `luau tests/run.luau` |
 | Coverage run + 100% line-coverage gate | `luau --coverage tests/run.luau && lute tests/coverage.luau` |
 | Typecheck, current solver | `luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau` |

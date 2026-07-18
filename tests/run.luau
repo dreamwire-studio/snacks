@@ -587,6 +587,181 @@ test("typed usage fixture", function()
 end)
 
 --[[
+	packs
+]]
+
+group("packs")
+
+local function packBytes(p: snack.Pack): buffer
+	return (p :: any) :: buffer
+end
+
+test("pack lays snacks end to end with zero overhead", function()
+	local first = snack("hello")
+	local second = snack(42)
+	local bundle = snack.pack(first, second)
+	expectEqual(
+		buffer.tostring(packBytes(bundle)),
+		buffer.tostring(snack.raw(first)) .. buffer.tostring(snack.raw(second)),
+		"exact concatenation"
+	)
+	expectEqual(buffer.len(packBytes(bundle)), snack.size(first) + snack.size(second), "size is the sum")
+end)
+
+test("unpack returns every value plus the entry count", function()
+	local bundle = snack.pack(snack("hello"), snack(42), snack(true))
+	local values, total = snack.unpack(bundle)
+	expectEqual(total, 3, "count")
+	expectEqual(values[1], "hello", "first")
+	expectEqual(values[2], 42, "second")
+	expectEqual(values[3], true, "third")
+end)
+
+test("the empty pack has no bytes and no entries", function()
+	local empty = snack.pack()
+	expectEqual(buffer.len(packBytes(empty)), 0, "zero bytes")
+	expectEqual(snack.count(empty), 0, "zero entries")
+	local values, total = snack.unpack(empty)
+	expectEqual(total, 0, "unpack count")
+	expectEqual(next(values), nil, "no values")
+end)
+
+test("a single snack packs to identical bytes", function()
+	local single = snack({ score = 9 })
+	local bundle = snack.pack(single)
+	expectEqual(buffer.tostring(packBytes(bundle)), buffer.tostring(snack.raw(single)), "same bytes")
+	local values, total = snack.unpack(bundle)
+	expectEqual(total, 1, "one entry")
+	expectDeepEqual(values[1], { score = 9 }, "value")
+end)
+
+test("a well-formed snack is a valid one-entry pack", function()
+	expectEqual(snack.count(snack("solo") :: any), 1, "count of a bare snack")
+end)
+
+test("pack also appends and merges", function()
+	local left = snack.pack(snack(1), snack(2))
+	local right = snack.pack(snack(3))
+	local merged = snack.pack(left, right, snack(4))
+	expectEqual(snack.count(merged), 4, "merged count")
+	local values = snack.unpack(merged)
+	expectEqual(values[1], 1, "first")
+	expectEqual(values[2], 2, "second")
+	expectEqual(values[3], 3, "third")
+	expectEqual(values[4], 4, "fourth")
+end)
+
+test("nil entries are preserved and counted", function()
+	local bundle = snack.pack(snack(nil), snack(nil), snack(1))
+	expectEqual(snack.count(bundle), 3, "count")
+	local values, total = snack.unpack(bundle)
+	expectEqual(total, 3, "unpack count")
+	expectEqual(values[1], nil, "first is nil")
+	expectEqual(values[3], 1, "third")
+	local trailing = snack.pack(snack(1), snack(nil))
+	local _, trailingTotal = snack.unpack(trailing)
+	expectEqual(trailingTotal, 2, "trailing nil still counted")
+	expectEqual(snack.nibble(trailing, 2), nil, "nibbling a nil entry")
+end)
+
+test("nibble decodes single entries of every type", function()
+	local expected: { any } = {
+		true,
+		false,
+		5,
+		-5,
+		0.5,
+		1 / 3,
+		"text",
+		vector.create(1, 2, 3),
+		buffer.fromstring("blob"),
+		{ 1, 2, nested = { deep = true } },
+	}
+	local pieces = {}
+	for index = 1, #expected do
+		pieces[index] = snack(expected[index])
+	end
+	local bundle = snack.pack(table.unpack(pieces))
+	-- Nibbling the last entry forces a skip over every other tag type, and
+	-- nibbling each index checks the skip landed on the right boundary.
+	for index = #expected, 1, -1 do
+		expectDeepEqual(snack.nibble(bundle, index), expected[index], `entry {index}`)
+	end
+end)
+
+test("pack copies bytes eagerly", function()
+	local original = snack("abc")
+	local bundle = snack.pack(original)
+	buffer.writeu8(snack.raw(original), 2, (string.byte("z")))
+	local values = snack.unpack(bundle)
+	expectEqual(values[1], "abc", "pack unaffected by later mutation")
+end)
+
+test("bite refuses a multi-entry pack", function()
+	expectError(function()
+		return bite(snack.pack(snack(1), snack(2)) :: any)
+	end, "trailing bytes")
+end)
+
+test("pack rejects non-buffer arguments by position", function()
+	expectError(function()
+		return snack.pack(5 :: any)
+	end, 'expected a snack or pack at argument #1, got a value of type "number"')
+	expectError(function()
+		return snack.pack(snack(1), "loose string" :: any)
+	end, "argument #2")
+end)
+
+test("unpack, count, and nibble reject non-buffers", function()
+	expectError(function()
+		return snack.unpack(5 :: any)
+	end, "snack.unpack: expected a pack")
+	expectError(function()
+		return snack.count({} :: any)
+	end, "snack.count: expected a pack")
+	expectError(function()
+		return snack.nibble("nope" :: any, 1)
+	end, "snack.nibble: expected a pack")
+end)
+
+test("nibble rejects bad indexes", function()
+	local bundle = snack.pack(snack(1))
+	expectError(function()
+		return snack.nibble(bundle, 0)
+	end, "index must be a positive integer")
+	expectError(function()
+		return snack.nibble(bundle, 1.5)
+	end, "index must be a positive integer")
+	expectError(function()
+		return snack.nibble(bundle, "first" :: any)
+	end, "index must be a positive integer")
+end)
+
+test("nibble errors past the last entry", function()
+	expectError(function()
+		return snack.nibble(snack.pack(snack(1), snack(2)), 3)
+	end, "index 3 is out of range for a pack of 2 entries")
+	expectError(function()
+		return snack.nibble(snack.pack(), 1)
+	end, "pack of 0 entries")
+end)
+
+test("malformed packs fail while skipping", function()
+	expectError(function()
+		return snack.count(craft(0, 200) :: any)
+	end, "unknown tag 200")
+	expectError(function()
+		return snack.count(craft(0, 7, 5) :: any)
+	end, "truncated")
+	expectError(function()
+		return snack.nibble(craft(3, 128) :: any, 2)
+	end, "truncated")
+	expectError(function()
+		return snack.unpack(craft(255) :: any)
+	end, "unknown tag 255")
+end)
+
+--[[
 	fuzzing: 512 random values, deterministic seed
 ]]
 
@@ -642,6 +817,31 @@ for iteration = 1, 512 do
 	test(`random value #{iteration}`, function()
 		local value = randomValue(0)
 		expectDeepEqual(bite(snack(value)), value, "fuzz round trip")
+	end)
+end
+
+group("pack fuzzing")
+
+for iteration = 1, 64 do
+	test(`random pack #{iteration}`, function()
+		local entryCount = math.random(0, 5)
+		local values: { [number]: any } = {}
+		local pieces = {}
+		for index = 1, entryCount do
+			values[index] = randomValue(0)
+			pieces[index] = snack(values[index])
+		end
+		local bundle = snack.pack(table.unpack(pieces, 1, entryCount))
+		expectEqual(snack.count(bundle), entryCount, "count")
+		local decoded, decodedCount = snack.unpack(bundle)
+		expectEqual(decodedCount, entryCount, "unpack count")
+		for index = 1, entryCount do
+			expectDeepEqual(decoded[index], values[index], `entry {index}`)
+		end
+		if entryCount > 0 then
+			local pickIndex = math.random(1, entryCount)
+			expectDeepEqual(snack.nibble(bundle, pickIndex), values[pickIndex], "nibble")
+		end
 	end)
 end
 

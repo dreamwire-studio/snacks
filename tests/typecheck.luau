@@ -40,4 +40,13 @@ return function()
 	local stored: buffer = snack.raw(greeting)
 	local restored = snack.wrap(stored) :: snack.String
 	assert(snack.bite(restored) == "hello", "wrap round trip")
+
+	-- Packs: many snacks in one buffer, with typed construction.
+	local bundle: snack.Pack = snack.pack(greeting, answer)
+	local bundleValues, bundleCount = snack.unpack(bundle)
+	assert(bundleCount == 2, "pack count")
+	assert(bundleValues[1] == "hello", "pack first entry")
+	assert(snack.nibble(bundle, 2) == 42, "nibble second entry")
+	local merged: snack.Pack = snack.pack(bundle, flag)
+	assert(snack.count(merged) == 3, "merged pack count")
 end
