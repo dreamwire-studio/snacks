@@ -766,6 +766,152 @@ test("malformed packs fail while skipping", function()
 end)
 
 --[[
+	digest (printable transport encodings)
+]]
+
+group("digest")
+
+test("hex is the default algorithm", function()
+	local greeting = snack("hello")
+	expectEqual(snack.digest(greeting), "070568656c6c6f", "known hex digest")
+	expectEqual(snack.digest(greeting), snack.digest(greeting, "hex"), "default matches explicit hex")
+end)
+
+test("hex round trips a snack exactly", function()
+	local restored = snack.undigest(snack.digest(snack("hello")))
+	expectEqual(bite(restored), "hello", "value")
+	expectEqual(snack.is(snack.raw(restored :: any)), true, "still one well-formed snack")
+end)
+
+test("hex decoding accepts uppercase", function()
+	expectEqual(bite(snack.undigest("070568656C6C6F")), "hello", "uppercase hex")
+end)
+
+test("base64 matches the RFC 4648 test vectors", function()
+	expectEqual(snack.digest(snack.wrap(buffer.fromstring("Man")), "base64"), "TWFu", "no padding needed")
+	expectEqual(snack.digest(snack.wrap(buffer.fromstring("Ma")), "base64"), "TWE=", "one pad")
+	expectEqual(snack.digest(snack.wrap(buffer.fromstring("M")), "base64"), "TQ==", "two pads")
+end)
+
+test("base64-urlsafe swaps the alphabet and drops padding", function()
+	local awkward = snack.wrap(buffer.fromstring("\251\239\255"))
+	expectEqual(snack.digest(awkward, "base64"), "++//", "standard alphabet")
+	expectEqual(snack.digest(awkward, "base64-urlsafe"), "--__", "urlsafe alphabet")
+	expectEqual(snack.digest(snack.wrap(buffer.fromstring("M")), "base64-urlsafe"), "TQ", "no padding")
+	expectEqual(bite(snack.undigest(snack.digest(snack("x"), "base64-urlsafe"), "base64-urlsafe")), "x", "round trip")
+end)
+
+test("unpadded standard base64 still decodes", function()
+	local restored = snack.undigest("TWE", "base64")
+	expectEqual(buffer.tostring(snack.raw(restored :: any)), "Ma", "decoded bytes")
+end)
+
+test("every payload length round trips in every algorithm", function()
+	local algorithms: { snack.DigestAlgorithm } = { "hex", "base64", "base64-urlsafe" }
+	for length = 0, 5 do
+		local bytes = buffer.create(length)
+		for offset = 0, length - 1 do
+			buffer.writeu8(bytes, offset, 250 + offset)
+		end
+		local wrapped = snack.wrap(bytes)
+		for _, algorithm in algorithms do
+			-- cast: the old solver widens the annotated array elements to string
+			local text = snack.digest(wrapped, algorithm :: any)
+			local restored = snack.undigest(text, algorithm :: any)
+			expectEqual(
+				buffer.tostring(snack.raw(restored :: any)),
+				buffer.tostring(bytes),
+				`{algorithm} length {length}`
+			)
+		end
+		expectEqual(#snack.digest(wrapped, "hex"), length * 2, `hex digest length for {length}`)
+		expectEqual(#snack.digest(wrapped, "base64"), (length + 2) // 3 * 4, `base64 digest length for {length}`)
+	end
+end)
+
+test("a digested pack comes back byte-identical and still a pack", function()
+	local bundle = snack.pack(snack(1), snack(nil), snack("two"), snack({ deep = true }))
+	local text = snack.digest(bundle, "base64")
+	local restored = snack.undigest(text, "base64")
+	expectEqual(
+		buffer.tostring(snack.raw(restored :: any)) == buffer.tostring(packBytes(bundle)),
+		true,
+		"byte-exact round trip"
+	)
+	expectEqual(snack.count(restored), 4, "entry count survives")
+	expectEqual(snack.nibble(restored, 3), "two", "nibble works on the restored pack")
+	local values, total = snack.unpack(restored)
+	expectEqual(total, 4, "unpack count")
+	expectDeepEqual(values[4], { deep = true }, "deep entry")
+end)
+
+test("the empty pack digests to the empty string", function()
+	local empty = snack.pack()
+	expectEqual(snack.digest(empty), "", "hex")
+	expectEqual(snack.digest(empty, "base64"), "", "base64")
+	expectEqual(snack.digest(empty, "base64-urlsafe"), "", "base64-urlsafe")
+	expectEqual(snack.count(snack.undigest("")), 0, "undigested empty pack")
+	expectEqual(snack.count(snack.undigest("", "base64")), 0, "undigested empty base64")
+end)
+
+test("digest and undigest validate their arguments", function()
+	expectError(function()
+		return snack.digest(5 :: any)
+	end, "snack.digest: expected a snack or pack")
+	expectError(function()
+		return snack.digest(snack(1), "md5" :: any)
+	end, 'unknown algorithm "md5"')
+	expectError(function()
+		return snack.undigest(5 :: any)
+	end, "snack.undigest: expected a string")
+	expectError(function()
+		return snack.undigest("00", "md5" :: any)
+	end, 'unknown algorithm "md5"')
+end)
+
+test("malformed hex digests are rejected with positions", function()
+	expectError(function()
+		return snack.undigest("abc")
+	end, "odd hex length")
+	expectError(function()
+		return snack.undigest("0g")
+	end, "invalid character at position 2")
+	expectError(function()
+		return snack.undigest("g0")
+	end, "invalid character at position 1")
+end)
+
+test("malformed base64 digests are rejected", function()
+	expectError(function()
+		return snack.undigest("T", "base64")
+	end, "truncated base64")
+	expectError(function()
+		return snack.undigest("TW!u", "base64")
+	end, "invalid character at position 3")
+	expectError(function()
+		return snack.undigest("TW-u", "base64")
+	end, "invalid character at position 3")
+	expectError(function()
+		return snack.undigest("+abc", "base64-urlsafe")
+	end, "invalid character at position 1")
+	expectError(function()
+		return snack.undigest("TQ=", "base64")
+	end, "misplaced padding")
+	expectError(function()
+		return snack.undigest("TQ===", "base64")
+	end, "misplaced padding")
+	expectError(function()
+		return snack.undigest("=A==", "base64")
+	end, "invalid character at position 1")
+	expectError(function()
+		return snack.undigest("TR", "base64")
+	end, "non-zero trailing bits")
+	expectError(function()
+		return snack.undigest("TWF", "base64")
+	end, "non-zero trailing bits")
+end)
+
+--[[
 	fuzzing: 512 random values, deterministic seed
 ]]
 
@@ -846,6 +992,30 @@ for iteration = 1, 64 do
 			local pickIndex = math.random(1, entryCount)
 			expectDeepEqual(snack.nibble(bundle, pickIndex), values[pickIndex], "nibble")
 		end
+	end)
+end
+
+group("digest fuzzing")
+
+local DIGEST_ALGORITHMS: { snack.DigestAlgorithm } = { "hex", "base64", "base64-urlsafe" }
+
+for iteration = 1, 64 do
+	test(`random digest #{iteration}`, function()
+		local entryCount = math.random(0, 4)
+		local pieces = {}
+		for index = 1, entryCount do
+			pieces[index] = snack(randomValue(0))
+		end
+		local bundle = snack.pack(table.unpack(pieces, 1, entryCount))
+		-- cast: the old solver widens the annotated array elements to string
+		local algorithm = DIGEST_ALGORITHMS[math.random(1, #DIGEST_ALGORITHMS)] :: any
+		local restored = snack.undigest(snack.digest(bundle, algorithm), algorithm)
+		expectEqual(
+			buffer.tostring(snack.raw(restored :: any)) == buffer.tostring(packBytes(bundle)),
+			true,
+			`byte-exact {algorithm} round trip`
+		)
+		expectEqual(snack.count(restored), entryCount, "entry count")
 	end)
 end
 

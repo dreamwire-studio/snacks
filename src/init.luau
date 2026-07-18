@@ -26,6 +26,7 @@
 -- `@self` = this module's own directory: init.luau represents the `src`
 -- directory itself, so a plain `./` here would resolve to siblings of src/.
 local Decoder = require("@self/Decoder")
+local Digest = require("@self/Digest")
 local Encoder = require("@self/Encoder")
 
 local decodeValue = Decoder.decodeValue
@@ -53,6 +54,15 @@ export type Pack = {
 	     multi-entry pack cannot accidentally be passed to `bite`. ]]
 	__pack: true,
 }
+
+export type DigestAlgorithm = "hex" | "base64" | "base64-urlsafe"
+
+--[[ What `undigest` returns. Digesting is pure transcoding, so the decoded
+     buffer is byte-identical to what went in — which means it is whatever it
+     was before: a snack if a snack was digested, a pack if a pack was. The
+     intersection lets both readings typecheck: pass it to `bite`, or to the
+     pack functions, to match what you put in. ]]
+export type Undigested = Snack<any> & Pack
 
 --- Unpacks a snack back into the value that was passed to `snack(...)`.
 --- Errors if given anything other than a buffer produced by snack (or a
@@ -197,6 +207,30 @@ local function nibble(p: Pack, index: number): any
 	error(`snack.nibble: index {index} is out of range for a pack of {entry} entries`, 2)
 end
 
+--- Transcodes a snack or pack into a printable string for transports that
+--- cannot carry binary (HTTP bodies, headers, URLs). `algorithm` is "hex"
+--- (the default), "base64", or "base64-urlsafe".
+local function digest(value: Snack<any> | Pack, algorithm: DigestAlgorithm?): string
+	local bytes = value :: any
+	if type(bytes) ~= "buffer" then
+		error(`snack.digest: expected a snack or pack, got a value of type "{typeof(value)}"`, 2)
+	end
+	return Digest.encode(bytes, algorithm or "hex")
+end
+
+--- Reverses `digest`, restoring the exact bytes that were digested — a
+--- digested snack comes back a snack, a digested pack comes back a pack.
+--- The algorithm must match the one used to digest (default "hex").
+--- Transcoding is validated (bad characters, lengths, and padding error),
+--- but the decoded bytes are not: pair with `snack.is` or
+--- `pcall(snack.count, ...)` when the text comes from an untrusted peer.
+local function undigest(text: string, algorithm: DigestAlgorithm?): Undigested
+	if type(text) ~= "string" then
+		error(`snack.undigest: expected a string, got a value of type "{typeof(text)}"`, 2)
+	end
+	return Digest.decode(text, algorithm or "hex") :: any
+end
+
 local snack = {
 	bite = bite,
 	size = size,
@@ -207,6 +241,8 @@ local snack = {
 	unpack = unpackEntries,
 	count = count,
 	nibble = nibble,
+	digest = digest,
+	undigest = undigest,
 }
 
 return setmetatable(snack, {

@@ -69,13 +69,13 @@ jobs:
       - name: Current solver (luau-lsp)
         run: >-
           luau-lsp analyze --platform standard
-          src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau
+          src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau src/Digest.luau
           build/init.luau tests/run.luau tests/typecheck.luau
 
       - name: New solver (lute check)
         run: >-
           lute check
-          src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau
+          src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau src/Digest.luau
           build/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau tools/build.luau
 
   style:

@@ -1,7 +1,7 @@
 [package]
 name = "dreamwire-studio/snack"
 description = "Pack any Luau value into the smallest practical pile of bytes, and bite it back out."
-version = "0.2.1"
+version = "0.3.0"
 license = "GPL-3.0-only"
 authors = ["Reece Harris <me@reeceharris.net>"]
 registry = "https://github.com/UpliftGames/wally-index"

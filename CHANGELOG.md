@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-18
+
+### Added
+
+- **Digests**: transcode snacks and packs to printable strings for HTTP and
+  other text-only transports.
+  - `snack.digest(snackOrPack, algorithm?)` with three algorithms: `"hex"`
+    (the default), `"base64"` (RFC 4648, padded), and `"base64-urlsafe"`
+    (`-`/`_` alphabet, unpadded).
+  - `snack.undigest(text, algorithm?)` restores the exact bytes that were
+    digested — a snack comes back a snack, a pack comes back a pack. Its
+    return type `snack.Undigested` is both `Snack<any>` and `Pack`, so
+    `bite` and the pack functions accept it directly.
+  - Strict decoding: characters outside the alphabet, impossible lengths,
+    misplaced padding, and non-zero trailing bits fail with positioned
+    `malformed digest` errors. Hex decoding accepts both cases; base64
+    decoding accepts optional padding.
+  - Exported `snack.DigestAlgorithm` and `snack.Undigested` types.
+
 ## [0.2.1] - 2026-07-18
 
 ### Changed
