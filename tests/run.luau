@@ -3,7 +3,11 @@
 --[=[
 	snack test suite.
 
-	Run with either standalone runtime:
+	The suite runs against the BUILT single-file module — the exact bytes
+	that ship to consumers — so bundle first:
+		lute tools/build.luau
+
+	Then run with either standalone runtime:
 		lute tests/run.luau
 		luau tests/run.luau
 
@@ -11,7 +15,7 @@
 		luau --coverage tests/run.luau
 ]=]
 
-local snack = require("../src")
+local snack = require("../build")
 local runTypedUsage = require("./typecheck")
 
 local bite = snack.bite

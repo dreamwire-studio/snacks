@@ -383,23 +383,41 @@ rokit install
 
 | Task | Command |
 | --- | --- |
+| Build the single-file module into `build/init.luau` | `lute tools/build.luau` |
 | Run the test suite (660 tests, incl. 576 seeded fuzz round trips) | `lute tests/run.luau` |
 | Same suite on the reference CLI | `luau tests/run.luau` |
 | Coverage run + 100% line-coverage gate | `luau --coverage tests/run.luau && lute tests/coverage.luau` |
-| Typecheck, current solver | `luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau` |
-| Typecheck, new solver | `lute check src/init.luau tests/run.luau tests/typecheck.luau` |
-| Format | `stylua src tests` |
+| Typecheck, current solver | `luau-lsp analyze --platform standard src build/init.luau tests` |
+| Typecheck, new solver | `lute check src/init.luau build/init.luau tests/run.luau tools/build.luau` |
+| Format | `stylua src tests tools` |
 
-CI ([ci.yml](.github/workflows/ci.yml)) runs the suite on Linux, Windows, and macOS for
-every push and pull request, and fails if line coverage of `src/init.luau` drops below
-100%. Publishing a GitHub release tagged `vX.Y.Z` (matching the `wally.toml` version)
-re-verifies everything and publishes to Wally via
+### Source layout and the build step
+
+The published module is one dependency-free file, but it is *developed* as focused
+modules and bundled by a build step:
+
+| Path | Role |
+| --- | --- |
+| [src/Tags.luau](src/Tags.luau) | Wire-format constants shared by both sides |
+| [src/Writer.luau](src/Writer.luau) | Growable byte writer over `buffer` |
+| [src/Encoder.luau](src/Encoder.luau) | Value → bytes |
+| [src/Decoder.luau](src/Decoder.luau) | Bytes → value, plus the structural skip walker packs use |
+| [src/init.luau](src/init.luau) | Public API and all exported types |
+| [tools/build.luau](tools/build.luau) | Bundles the above into `build/init.luau` |
+
+`lute tools/build.luau` wraps each internal module in an IIFE local (in dependency
+order), strips the sibling requires, and appends the entry module so its `export type`
+statements stay top-level. `build/` is generated — never edit it, and never commit it;
+tests, coverage, and publishing all run against it so what's verified is exactly what
+ships. Everything is compiled `--!strict` and the bundle is marked `--!native` so
+buffer-heavy encoding benefits from native codegen in Roblox.
+
+CI ([ci.yml](.github/workflows/ci.yml)) builds and then runs the suite on Linux, Windows,
+and macOS for every push and pull request, and fails if line coverage of
+`build/init.luau` drops below 100%. Publishing a GitHub release tagged `vX.Y.Z` (matching
+the `wally.toml` version) re-verifies everything, rebuilds, and publishes to Wally via
 [release.yml](.github/workflows/release.yml) — set a `WALLY_AUTH_TOKEN_SNACKS` repository secret
 for it.
-
-The module is a single file ([src/init.luau](src/init.luau)) with no requires, compiled
-`--!strict` and marked `--!native` so buffer-heavy encoding benefits from native codegen
-in Roblox.
 
 ## License
 

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-18
+
+### Changed
+
+- The source is now split into focused modules (`src/Tags`, `src/Writer`,
+  `src/Encoder`, `src/Decoder`, `src/init`) bundled into the published
+  single-file module at `build/init.luau` by `tools/build.luau`. Consumers
+  still receive one dependency-free ModuleScript; tests and coverage run
+  against the built artifact.
+
 ## [0.2.0] - 2026-07-18
 
 ### Added

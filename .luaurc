@@ -1,6 +1,6 @@
 {
 	"languageMode": "strict",
 	"aliases": {
-		"snack": "src"
+		"snack": "build"
 	}
 }
