@@ -12,16 +12,33 @@ no per-field table overhead, goes straight into DataStores (which accept buffers
 and squeezes far more state under the ~900-byte unreliable remote budget.
 
 ```lua
-local snack = require(ReplicatedStorage.Packages.snack)
-local bite = snack.bite
+local snack = require(game.ReplicatedStorage.Packages.Snack)
 
-local a: snack.String = snack("string")
-local b: snack.Number = snack(0)
-local c: snack.Boolean = snack(false)
+local apple: snack.String = snack("string")
+local bannana: snack.Number = snack(0)
+local carrot: snack.Boolean = snack(false)
 
-print(bite(a)) --> "string"
-print(bite(b)) --> 0
-print(bite(c)) --> false
+print(snack.bite(apple)) --> "string"
+print(snack.bite(bannana)) --> 0
+print(snack.bite(carrot)) --> false
+
+local pack_lunch = snack.pack(apple, bannana, carrot)
+
+print(snack.nibble(pack_lunch, 1)) --> "string"
+print(snack.nibble(pack_lunch, 2)) --> 0
+print(snack.nibble(pack_lunch, 3)) --> false
+
+local values, n = snack.unpack(pack_lunch)
+for index = 1, n do
+	print(values[index]) --> "string", 0, false
+end
+
+print(snack.digest(pack_lunch)) 					--> "0706737472696e67030001" (default hex)
+print(snack.digest(pack_lunch, "base64")) 			--> "BwZzdHJpbmcDAAE="
+print(snack.digest(pack_lunch, "base64-urlsafe")) 	--> "BwZzdHJpbmcDAAE"
+
+local restored = snack.undigest("0706737472696e67030001")
+print(snack.nibble(restored, 1)) --> "string"
 ```
 
 A `Snack<T>` remembers what went in, so `bite` hands the original type straight back to the
@@ -35,7 +52,7 @@ Add snack to your `wally.toml` and install:
 
 ```toml
 [dependencies]
-snack = "dreamwire-studio/snack@0.2.0"
+Snack = "dreamwire-studio/snack@0.3.0"
 ```
 
 ```sh
@@ -45,7 +62,7 @@ wally install
 Then require it through your Rojo project as usual:
 
 ```lua
-local snack = require(ReplicatedStorage.Packages.snack)
+local snack = require(game.ReplicatedStorage.Packages.Snack)
 ```
 
 No dependencies, one ModuleScript, works on the server, the client, and in plain Luau
@@ -57,7 +74,7 @@ runtimes (tested against both [Lute](https://github.com/luau-lang/lute) and the
 ## Quick tour
 
 ```lua
-local snack = require(ReplicatedStorage.Packages.snack)
+local snack = require(game.ReplicatedStorage.Packages.Snack)
 local bite = snack.bite
 
 -- Pack anything supported, including nested tables of mixed values:
@@ -175,6 +192,39 @@ if `index` is past the last entry.
 Number of entries, found by walking boundaries without decoding. Errors on malformed
 bytes, so `pcall(snack.count, p)` doubles as pack validation.
 
+### `snack.digest(s: Snack | Pack, algorithm?) → string`
+
+Transcodes a snack or pack into a printable string for transports that can't carry
+binary — HTTP JSON bodies, headers, query strings. Three algorithms:
+
+| Algorithm | Output | Size |
+| --- | --- | --- |
+| `"hex"` (default) | lowercase hexadecimal | 2 chars/byte |
+| `"base64"` | RFC 4648 standard, `=`-padded | ~1.33 chars/byte |
+| `"base64-urlsafe"` | RFC 4648 url-safe (`-`/`_`), unpadded | ~1.33 chars/byte |
+
+Digesting is **pure transcoding** — no header, no framing — so the digest is exactly the
+buffer's bytes in printable form, and `undigest` restores them byte-identically.
+
+### `snack.undigest(text: string, algorithm?) → Undigested`
+
+Reverses `digest`: pass the same algorithm that produced the text (default `"hex"`).
+Because the round trip is byte-exact, whatever went in comes back out — a digested snack
+is still a snack, a digested pack is still a pack — and the returned `Undigested` type is
+both a `Snack<any>` *and* a `Pack`, so `bite` and the pack functions all accept it
+directly:
+
+```lua
+local greeting = snack.bite(snack.undigest(text))          -- if you digested a snack
+local entries = snack.count(snack.undigest(text, "base64")) -- if you digested a pack
+```
+
+Malformed text errors with a positioned message (`invalid character at position N`, `odd
+hex length`, `misplaced padding`, `truncated base64`, `non-zero trailing bits`); decoding
+is strict so anything that decodes re-digests canonically. The *decoded bytes* are not
+validated — pair with `snack.is` or `pcall(snack.count, ...)` when the text comes from an
+untrusted peer.
+
 ### Exported types
 
 | Type | Meaning |
@@ -189,6 +239,8 @@ bytes, so `pcall(snack.count, p)` doubles as pack validation.
 | `snack.Vector` | `Snack<vector>` |
 | `snack.Buffer` | `Snack<buffer>` |
 | `snack.Pack` | Zero or more snacks in one buffer — deliberately not assignable to/from `Snack<T>`, so a multi-entry pack can't be passed to `bite` by accident |
+| `snack.DigestAlgorithm` | `"hex" \| "base64" \| "base64-urlsafe"` |
+| `snack.Undigested` | What `undigest` returns: `Snack<any> & Pack`, usable as either |
 
 > **Why `snack.String` and not `snack.string`?** Luau reserves the primitive type names:
 > `export type string = ...` fails to compile with `TypeError: Redefinition of type
@@ -360,6 +412,31 @@ remote.OnServerEvent:Connect(function(player, payload)
 end)
 ```
 
+### Shipping snacks over HTTP
+
+`HttpService` bodies and headers are strings, so digest at the boundary — hex or base64
+in a JSON body, url-safe in a query string:
+
+```lua
+-- Send: a pack of events as base64 inside a JSON body
+HttpService:PostAsync(
+	endpoint,
+	HttpService:JSONEncode({
+		events = snack.digest(eventPack, "base64"),
+	})
+)
+
+-- Or in a query string, where "=" and "/" would need escaping:
+local url = `{endpoint}?state={snack.digest(save, "base64-urlsafe")}`
+
+-- Receive (e.g. a webhook response): undigest, validate, then use
+local body = HttpService:JSONDecode(response)
+local restored = snack.undigest(body.events, "base64")
+if pcall(snack.count, restored) then
+	local values, n = snack.unpack(restored)
+end
+```
+
 ### Keeping many values packed in memory
 
 A snack is just bytes, so long-lived state you rarely touch (undo history, chunk data,
@@ -384,7 +461,7 @@ rokit install
 | Task | Command |
 | --- | --- |
 | Build the single-file module into `build/init.luau` | `lute tools/build.luau` |
-| Run the test suite (660 tests, incl. 576 seeded fuzz round trips) | `lute tests/run.luau` |
+| Run the test suite (736 tests, incl. 640 seeded fuzz round trips) | `lute tests/run.luau` |
 | Same suite on the reference CLI | `luau tests/run.luau` |
 | Coverage run + 100% line-coverage gate | `luau --coverage tests/run.luau && lute tests/coverage.luau` |
 | Typecheck, current solver | `luau-lsp analyze --platform standard src build/init.luau tests` |
@@ -402,6 +479,7 @@ modules and bundled by a build step:
 | [src/Writer.luau](src/Writer.luau) | Growable byte writer over `buffer` |
 | [src/Encoder.luau](src/Encoder.luau) | Value → bytes |
 | [src/Decoder.luau](src/Decoder.luau) | Bytes → value, plus the structural skip walker packs use |
+| [src/Digest.luau](src/Digest.luau) | Hex/base64 transcoding for text transports |
 | [src/init.luau](src/init.luau) | Public API and all exported types |
 | [tools/build.luau](tools/build.luau) | Bundles the above into `build/init.luau` |
 

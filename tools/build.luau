@@ -25,7 +25,7 @@
 
 local fs = require("@lute/fs")
 
-local MODULE_ORDER = { "Tags", "Writer", "Encoder", "Decoder" }
+local MODULE_ORDER = { "Tags", "Writer", "Encoder", "Decoder", "Digest" }
 local ENTRY = "init"
 local OUTPUT_DIRECTORY = "build"
 local OUTPUT = "build/init.luau"

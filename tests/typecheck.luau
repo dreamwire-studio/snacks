@@ -49,4 +49,14 @@ return function()
 	assert(snack.nibble(bundle, 2) == 42, "nibble second entry")
 	local merged: snack.Pack = snack.pack(bundle, flag)
 	assert(snack.count(merged) == 3, "merged pack count")
+
+	-- Digests: printable transport encodings. Undigested is both a
+	-- Snack<any> and a Pack, so bite and the pack functions both typecheck.
+	local digested: string = snack.digest(greeting)
+	local restoredSnack: snack.Undigested = snack.undigest(digested)
+	assert(snack.bite(restoredSnack) == "hello", "hex digest round trip")
+	local packDigest: string = snack.digest(merged, "base64-urlsafe")
+	local restoredPack = snack.undigest(packDigest, "base64-urlsafe")
+	assert(snack.count(restoredPack) == 3, "pack digest round trip")
+	assert(snack.nibble(restoredPack, 1) == "hello", "nibble after undigest")
 end
