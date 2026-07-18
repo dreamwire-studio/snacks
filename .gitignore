@@ -1,6 +1,7 @@
 /Packages/
 /DevPackages/
 /ServerPackages/
+/build/
 coverage.out
 sourcemap.json
 *.rbxl

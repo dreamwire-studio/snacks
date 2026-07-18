@@ -12,7 +12,7 @@
 local fs = require("@lute/fs")
 local process = require("@lute/process")
 
-local TARGET = "src/init.luau"
+local TARGET = "build/init.luau"
 
 local coverageFile = fs.open("coverage.out", "r")
 local contents = fs.read(coverageFile)

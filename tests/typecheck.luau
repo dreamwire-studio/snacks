@@ -6,7 +6,7 @@
 	and the test runner executes its assertions at runtime.
 ]=]
 
-local snack = require("../src")
+local snack = require("../build")
 
 return function()
 	local greeting: snack.String = snack("hello")

@@ -38,6 +38,9 @@ jobs:
             exit 1
           fi
 
+      - name: Build single-file module
+        run: lute tools/build.luau
+
       - name: Run test suite
         run: lute tests/run.luau
 
@@ -49,8 +52,8 @@ jobs:
 
       - name: Typecheck
         run: |
-          luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau
-          lute check src/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau
+          luau-lsp analyze --platform standard src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau build/init.luau tests/run.luau tests/typecheck.luau
+          lute check src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau build/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau tools/build.luau
 
   publish:
     name: Publish to Wally
@@ -61,6 +64,9 @@ jobs:
 
       - name: Install toolchain
         uses: ./.github/actions/setup-toolchain
+
+      - name: Build single-file module
+        run: lute tools/build.luau
 
       - name: Log in to Wally
         run: wally login --token "${{ secrets.WALLY_AUTH_TOKEN_SNACKS }}"

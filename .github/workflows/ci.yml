@@ -27,6 +27,9 @@ jobs:
       - name: Install toolchain
         uses: ./.github/actions/setup-toolchain
 
+      - name: Build single-file module
+        run: lute tools/build.luau
+
       - name: Run test suite (lute)
         run: lute tests/run.luau
 
@@ -42,10 +45,13 @@ jobs:
       - name: Install toolchain
         uses: ./.github/actions/setup-toolchain
 
+      - name: Build single-file module
+        run: lute tools/build.luau
+
       - name: Collect line coverage
         run: luau --coverage tests/run.luau
 
-      - name: Enforce 100% line coverage of src/init.luau
+      - name: Enforce 100% line coverage of build/init.luau
         run: lute tests/coverage.luau
 
   typecheck:
@@ -57,11 +63,20 @@ jobs:
       - name: Install toolchain
         uses: ./.github/actions/setup-toolchain
 
+      - name: Build single-file module
+        run: lute tools/build.luau
+
       - name: Current solver (luau-lsp)
-        run: luau-lsp analyze --platform standard src/init.luau tests/run.luau tests/typecheck.luau
+        run: >-
+          luau-lsp analyze --platform standard
+          src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau
+          build/init.luau tests/run.luau tests/typecheck.luau
 
       - name: New solver (lute check)
-        run: lute check src/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau
+        run: >-
+          lute check
+          src/init.luau src/Tags.luau src/Writer.luau src/Encoder.luau src/Decoder.luau
+          build/init.luau tests/run.luau tests/typecheck.luau tests/coverage.luau tools/build.luau
 
   style:
     name: Formatting
@@ -73,4 +88,4 @@ jobs:
         uses: ./.github/actions/setup-toolchain
 
       - name: StyLua
-        run: stylua --check src tests
+        run: stylua --check src tests tools
